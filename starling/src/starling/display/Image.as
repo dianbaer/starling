@@ -19,7 +19,8 @@ package starling.display
     import starling.textures.TextureSmoothing;
     import starling.utils.VertexData;
     
-    /** An Image is a quad with a texture mapped onto it.
+    /** xp已看完
+	 *  An Image is a quad with a texture mapped onto it.
      *  
      *  <p>The Image class is the Starling equivalent of Flash's Bitmap class. Instead of 
      *  BitmapData, Starling uses textures to represent the pixels of an image. To display a 
@@ -48,6 +49,7 @@ package starling.display
         {
             if (texture)
             {
+				//读取纹理的宽高和是否支持透明，优先读取纹理的frame
                 var frame:Rectangle = texture.frame;
                 var width:Number  = frame ? frame.width  : texture.width;
                 var height:Number = frame ? frame.height : texture.height;
@@ -62,6 +64,7 @@ package starling.display
                 
                 mTexture = texture;
                 mSmoothing = TextureSmoothing.BILINEAR;
+				//顶点缓存
                 mVertexDataCache = new VertexData(4, pma);
                 mVertexDataCacheInvalid = true;
             }
@@ -86,6 +89,7 @@ package starling.display
         
         /** Readjusts the dimensions of the image according to its current texture. Call this method 
          *  to synchronize image and texture size after assigning a texture with a different size.*/
+		//读取正确的尺寸(应该是在，重新设置纹理后，想改变大小时，调用)
         public function readjustSize():void
         {
             var frame:Rectangle = texture.frame;
@@ -101,6 +105,7 @@ package starling.display
         }
         
         /** Sets the texture coordinates of a vertex. Coordinates are in the range [0, 1]. */
+		//设置纹理的位置
         public function setTexCoords(vertexID:int, coords:Point):void
         {
             mVertexData.setTexCoords(vertexID, coords.x, coords.y);
@@ -121,14 +126,18 @@ package starling.display
          *  The texture coordinates are already in the format required for rendering. */ 
         public override function copyVertexDataTo(targetData:VertexData, targetVertexID:int=0):void
         {
+			//这个顶点缓存，可能是保存比较原始的数据包括（颜色，透明度，纹理位置，纹理本身，显示对象的位置）
+			//就是增加效率的。因为会调用 mTexture.adjustVertexData，可能比较消耗效率，所以做一个缓存，不用总调用这个
             if (mVertexDataCacheInvalid)
             {
                 mVertexDataCacheInvalid = false;
                 mVertexData.copyTo(mVertexDataCache);
+				
                 mTexture.adjustVertexData(mVertexDataCache, 0, 4);
             }
-            
+            //如果定点缓存，没改变的话，直接copy就可以了
             mVertexDataCache.copyTo(targetData, targetVertexID);
+			//这之后要处理，targetData的所对应的对象的mTinted问题
         }
         
         /** The texture that is displayed on the quad. */
@@ -142,7 +151,11 @@ package starling.display
             else if (value != mTexture)
             {
                 mTexture = value;
+				//替换纹理的时候怎么只是，设置一下是否支持透明度呢，其他的都不设置呢（？）
+				//重设纹理的时候，保持原来的属性（确实不应该重置别的属性，如果想重置，可以按照纹理，去设置相应的属性）
                 mVertexData.setPremultipliedAlpha(mTexture.premultipliedAlpha);
+				//更改纹理缓存，但是并不更新那些顶点数据，因为下次用到时会更新的（这是没问题的，因为mVertexDataCache里面的数据库下次调用，不会使用的）
+				mVertexDataCache.setPremultipliedAlpha(mTexture.premultipliedAlpha, false);
                 onVertexDataChanged();
             }
         }
@@ -164,5 +177,11 @@ package starling.display
         {
             support.batchQuad(this, parentAlpha, mTexture, mSmoothing);
         }
+		public override function dispose():void{
+			mVertexDataCache.dispose();
+			mVertexDataCache = null;
+			mTexture = null;
+			super.dispose();
+		}
     }
 }

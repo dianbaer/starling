@@ -88,11 +88,16 @@ package starling.display
         }
         
         /** Disposes the resources of all children. */
+		//xp注销,可能注销的时候，就不需要再发那些离开事件了吧
         public override function dispose():void
         {
-            for (var i:int=mChildren.length-1; i>=0; --i)
-                mChildren[i].dispose();
-            
+			if(mChildren){
+				 for (var i:int=mChildren.length-1; i>=0; --i)
+					mChildren[i].dispose();
+				//xp应该把这个数组清空
+				mChildren.length = 0;
+				mChildren = null;
+			}
             super.dispose();
         }
         
@@ -106,6 +111,7 @@ package starling.display
         }
         
         /** Adds a child to the container at a certain index. */
+		/*
         public function addChildAt(child:DisplayObject, index:int):DisplayObject
         {
             var numChildren:int = mChildren.length; 
@@ -135,7 +141,43 @@ package starling.display
                 throw new RangeError("Invalid child index");
             }
         }
-        
+		*/
+        public function addChildAt(child:DisplayObject, index:int):DisplayObject
+        {
+            var numChildren:int = mChildren.length; 
+            
+            if (index >= 0 && index <= numChildren)
+            {
+                if (child.parent == this)
+                {
+                    setChildIndex(child, index); // avoids dispatching events
+                }
+                else
+                {
+                    child.removeFromParent();
+                    
+                    // 'splice' creates a temporary object, so we avoid it if it's not necessary
+                    if (index == numChildren) mChildren[numChildren] = child;
+                    else                      mChildren.splice(index, 0, child);
+                    
+                    child.setParent(this);
+                    child.dispatchEventWith(Event.ADDED, true);
+                    
+                    if (stage)
+                    {
+                        var container:DisplayObjectContainer = child as DisplayObjectContainer;
+                        if (container) container.broadcastEventWith(Event.ADDED_TO_STAGE);
+                        else           child.dispatchEventWith(Event.ADDED_TO_STAGE);
+                    }
+                }
+                
+                return child;
+            }
+            else
+            {
+                throw new RangeError("Invalid child index");
+            }
+        }
         /** Removes a child from the container. If the object is not a child, nothing happens. 
          *  If requested, the child will be disposed right away. */
         public function removeChild(child:DisplayObject, dispose:Boolean=false):DisplayObject
@@ -162,6 +204,7 @@ package starling.display
                 }
                 
                 child.setParent(null);
+				//可能这个子对象已经被移除了，也有可能，所以这里得判断
                 index = mChildren.indexOf(child); // index might have changed by event handler
                 if (index >= 0) mChildren.splice(index, 1); 
                 if (dispose) child.dispose();
@@ -176,11 +219,12 @@ package starling.display
         
         /** Removes a range of children from the container (endIndex included). 
          *  If no arguments are given, all children will be removed. */
+		//如果endIndex小于0或者大于等于最大长度，则移除全部
         public function removeChildren(beginIndex:int=0, endIndex:int=-1, dispose:Boolean=false):void
         {
             if (endIndex < 0 || endIndex >= numChildren) 
                 endIndex = numChildren - 1;
-            
+            //这块是一直删除开始那个，删某个长度，删除那每次都有判断没问题的
             for (var i:int=beginIndex; i<=endIndex; ++i)
                 removeChildAt(beginIndex, dispose);
         }
@@ -214,6 +258,7 @@ package starling.display
         public function setChildIndex(child:DisplayObject, index:int):void
         {
             var oldIndex:int = getChildIndex(child);
+			if (oldIndex == index) return;
             if (oldIndex == -1) throw new ArgumentError("Not a child of this container");
             mChildren.splice(oldIndex, 1);
             mChildren.splice(index, 0, child);
@@ -245,6 +290,7 @@ package starling.display
         }
         
         /** Determines if a certain object is a child of the container (recursively). */
+		//这个是包含，儿子的儿子也算
         public function contains(child:DisplayObject):Boolean
         {
             while (child)
@@ -256,6 +302,7 @@ package starling.display
         }
         
         /** @inheritDoc */ 
+		//resultRect只参与最后的赋值，所以很安全的，sHelperMatrix也是很安全的
         public override function getBounds(targetSpace:DisplayObject, resultRect:Rectangle=null):Rectangle
         {
             if (resultRect == null) resultRect = new Rectangle();
@@ -265,13 +312,15 @@ package starling.display
             if (numChildren == 0)
             {
                 getTransformationMatrix(targetSpace, sHelperMatrix);
+				//xp这个很安全，不牵扯到传参
                 MatrixUtil.transformCoords(sHelperMatrix, 0.0, 0.0, sHelperPoint);
                 resultRect.setTo(sHelperPoint.x, sHelperPoint.y, 0, 0);
-                return resultRect;
+                //return resultRect;
             }
             else if (numChildren == 1)
             {
-                return mChildren[0].getBounds(targetSpace, resultRect);
+                //return mChildren[0].getBounds(targetSpace, resultRect);
+				resultRect = mChildren[0].getBounds(targetSpace, resultRect);
             }
             else
             {
@@ -288,26 +337,31 @@ package starling.display
                 }
                 
                 resultRect.setTo(minX, minY, maxX - minX, maxY - minY);
-                return resultRect;
-            }                
+                //return resultRect;
+            }
+			return resultRect;			
         }
         
         /** @inheritDoc */
+		//这个一点问题都没有，因为localPoint传进来之后，就不会再被利用了
         public override function hitTest(localPoint:Point, forTouch:Boolean=false):DisplayObject
         {
             if (forTouch && (!visible || !touchable))
                 return null;
-            
+            //xp这里是很重要的，因为localPoint一般都会变化
             var localX:Number = localPoint.x;
             var localY:Number = localPoint.y;
             
             var numChildren:int = mChildren.length;
+			//xp碰撞测试需要从前往后
             for (var i:int=numChildren-1; i>=0; --i) // front to back!
             {
                 var child:DisplayObject = mChildren[i];
+				//计算这个孩子相对于父类的矩阵（这里扯皮了两次，父类调子类，子类又调父类）
                 getTransformationMatrix(child, sHelperMatrix);
-                
+                //根据子类相对于父类的矩阵，算出另一个坐标
                 MatrixUtil.transformCoords(sHelperMatrix, localX, localY, sHelperPoint);
+				//去计算子类的hitTest(最终是找到最底层的子类)（递归）（再到下一层的时候，用到的还是这个sHelperPoint，所以上面开始写好了localX，localY）
                 var target:DisplayObject = child.hitTest(sHelperPoint, forTouch);
                 
                 if (target) return target;
@@ -330,14 +384,14 @@ package starling.display
                 if (child.hasVisibleArea)
                 {
                     var filter:FragmentFilter = child.filter;
-
+					//一进一出
                     support.pushMatrix();
                     support.transformMatrix(child);
                     support.blendMode = child.blendMode;
                     
                     if (filter) filter.render(child, support, alpha);
                     else        child.render(support, alpha);
-                    
+                    //这块在还原回来
                     support.blendMode = blendMode;
                     support.popMatrix();
                 }
@@ -355,6 +409,9 @@ package starling.display
             // And since another listener could call this method internally, we have to take 
             // care that the static helper vector does not get currupted.
             
+			//这个是非常重要的，这个方法可能在发事件的时候，还会调用，还会往sBroadcastListeners放东西
+			//当然了再次调用的肯定是先完成，所以他加入多少，之后就清理多少，然后再继续回来一次调用的地方
+			//通过派发事件，删除子对象时，不会导致这个子对象，这次的监听删除，还会收到的
             var fromIndex:int = sBroadcastListeners.length;
             getChildEventListeners(this, event.type, sBroadcastListeners);
             var toIndex:int = sBroadcastListeners.length;
@@ -367,20 +424,21 @@ package starling.display
         
         /** Dispatches an event with the given parameters on all children (recursively). 
          *  The method uses an internal pool of event objects to avoid allocations. */
+		//广播是不能冒泡的
         public function broadcastEventWith(type:String, data:Object=null):void
         {
             var event:Event = Event.fromPool(type, false, data);
             broadcastEvent(event);
             Event.toPool(event);
         }
-        
+        //递归去所有子对象，按树型结构，遍历
         private function getChildEventListeners(object:DisplayObject, eventType:String, 
                                                 listeners:Vector.<DisplayObject>):void
         {
             var container:DisplayObjectContainer = object as DisplayObjectContainer;
             
             if (object.hasEventListener(eventType))
-                listeners.push(object);
+                listeners[listeners.length] = object; // avoiding 'push'
             
             if (container)
             {

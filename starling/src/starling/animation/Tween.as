@@ -15,7 +15,10 @@ package starling.animation
     import starling.events.Event;
     import starling.events.EventDispatcher;
 
-    /** A Tween animates numeric properties of objects. It uses different transition functions 
+    /** xp已看完
+	 *  动画的核心就是长度等于（终点-起点）*（现在时间/总时间），这是最稳定的动画，没有误差
+	 *  tween池里出来的，回归tween池，自己创建的，需要自己注销，tween内部不负责注销
+	 *  A Tween animates numeric properties of objects. It uses different transition functions 
      *  to give the animations various styles.
      *  
      *  <p>The primary use of this class is to do standard animations like movement, fading, 
@@ -62,6 +65,7 @@ package starling.animation
         
         private var mTotalTime:Number;
         private var mCurrentTime:Number;
+		private var mProgress:Number;
         private var mDelay:Number;
         private var mRoundToInt:Boolean;
         private var mNextTween:Tween;
@@ -69,6 +73,8 @@ package starling.animation
         private var mRepeatDelay:Number;
         private var mReverse:Boolean;
         private var mCurrentCycle:int;
+		//xp增加的
+		public var isPoolTween:Boolean = false;
         
         /** Creates a tween with a target, duration (in seconds) and a transition function.
          *  @param target the object that you want to animate
@@ -76,20 +82,24 @@ package starling.animation
          *  @param transition can be either a String (e.g. one of the constants defined in the
          *         Transitions class) or a function. Look up the 'Transitions' class for a   
          *         documentation about the required function signature. */ 
-        public function Tween(target:Object, time:Number, transition:Object="linear")        
+        public function Tween(target:Object, time:Number, transition:Object="linear", isPoolTween:Boolean = false)        
         {
-             reset(target, time, transition);
+             reset(target, time, transition, isPoolTween);
         }
 
         /** Resets the tween to its default values. Useful for pooling tweens. */
-        public function reset(target:Object, time:Number, transition:Object="linear"):Tween
+        public function reset(target:Object, time:Number, transition:Object="linear", isPoolTween:Boolean = false):Tween
         {
+			this.isPoolTween = isPoolTween;
             mTarget = target;
-            mCurrentTime = 0;
+            mCurrentTime = 0.0;
             mTotalTime = Math.max(0.0001, time);
+            mProgress = 0.0;
             mDelay = mRepeatDelay = 0.0;
-            mOnStart = mOnUpdate = mOnComplete = null;
-            mOnStartArgs = mOnUpdateArgs = mOnCompleteArgs = null;
+			//xp把repeat也置空,nextTween置空
+            mOnStart = mOnUpdate = mOnRepeat = mOnComplete = null;
+            mOnStartArgs = mOnUpdateArgs = mOnRepeatArgs = mOnCompleteArgs = null;
+			mNextTween = null;
             mRoundToInt = mReverse = false;
             mRepeatCount = 1;
             mCurrentCycle = -1;
@@ -110,13 +120,13 @@ package starling.animation
         
         /** Animates the property of an object to a target value. You can call this method multiple
          *  times on one tween. */
-        public function animate(property:String, targetValue:Number):void
+        public function animate(property:String, endValue:Number):void
         {
             if (mTarget == null) return; // tweening null just does nothing.
                    
             mProperties.push(property);
             mStartValues.push(Number.NaN);
-            mEndValues.push(targetValue);
+            mEndValues.push(endValue);
         }
         
         /** Animates the 'scaleX' and 'scaleY' properties of an object simultaneously. */
@@ -149,11 +159,14 @@ package starling.animation
             var restTime:Number = mTotalTime - mCurrentTime;
             var carryOverTime:Number = time > restTime ? time - restTime : 0.0;
             
-            mCurrentTime = Math.min(mTotalTime, mCurrentTime + time);
+			mCurrentTime += time;
             
-            if (mCurrentTime <= 0) return; // the delay is not over yet
-
-            if (mCurrentCycle < 0 && previousTime <= 0 && mCurrentTime > 0)
+            if (mCurrentTime <= 0) 
+                return; // the delay is not over yet
+            else if (mCurrentTime > mTotalTime) 
+                mCurrentTime = mTotalTime;
+			//xp上一次时间小于等于0，当前时间大于0 才说明tween开始了mCurrentTime<=0 return 这里mCurrentTime是肯定大于0的所以mCurrentTime > 0可以删除
+            if (mCurrentCycle < 0 && previousTime <= 0 /*&& mCurrentTime > 0*/)
             {
                 mCurrentCycle++;
                 if (mOnStart != null) mOnStart.apply(null, mOnStartArgs);
@@ -162,27 +175,27 @@ package starling.animation
             var ratio:Number = mCurrentTime / mTotalTime;
             var reversed:Boolean = mReverse && (mCurrentCycle % 2 == 1);
             var numProperties:int = mStartValues.length;
-
+			mProgress = reversed ? mTransitionFunc(1.0 - ratio) : mTransitionFunc(ratio);
+			//xp这块写得非常好，都是长度乘以比值，这样就不会有误差
             for (i=0; i<numProperties; ++i)
-            {                
-                if (isNaN(mStartValues[i])) 
+            {     
+				//if (isNaN(mStartValues[i])) 
+                if (mStartValues[i] != mStartValues[i]) // isNaN check - "isNaN" causes allocation!  
                     mStartValues[i] = mTarget[mProperties[i]] as Number;
                 
                 var startValue:Number = mStartValues[i];
                 var endValue:Number = mEndValues[i];
                 var delta:Number = endValue - startValue;
-                var transitionValue:Number = reversed ?
-                    mTransitionFunc(1.0 - ratio) : mTransitionFunc(ratio);
                 
-                var currentValue:Number = startValue + transitionValue * delta;
+				var currentValue:Number = startValue + mProgress * delta;
                 if (mRoundToInt) currentValue = Math.round(currentValue);
                 mTarget[mProperties[i]] = currentValue;
             }
 
             if (mOnUpdate != null) 
                 mOnUpdate.apply(null, mOnUpdateArgs);
-            
-            if (previousTime < mTotalTime && mCurrentTime >= mTotalTime)
+            //xp 这块也是，只有可能等于
+            if (previousTime < mTotalTime && mCurrentTime == mTotalTime)
             {
                 if (mRepeatCount == 0 || mRepeatCount > 1)
                 {
@@ -193,6 +206,7 @@ package starling.animation
                 }
                 else
                 {
+					//xp这块写的太牛逼了，保存成功回调函数和回调参数，防止派发事件的时候清理这些属性，很安全
                     // save callback & args: they might be changed through an event listener
                     var onComplete:Function = mOnComplete;
                     var onCompleteArgs:Array = mOnCompleteArgs;
@@ -204,15 +218,23 @@ package starling.animation
                     if (onComplete != null) onComplete.apply(null, onCompleteArgs);
                 }
             }
-            
+            //xp 这块也不用担心，advanceTime开头有限制，如果是完成了，直接返回
             if (carryOverTime) 
                 advanceTime(carryOverTime);
         }
-        
+        /** The end value a certain property is animated to. Throws an ArgumentError if the 
+         *  property is not being animated. */
+        public function getEndValue(property:String):Number
+        {
+            var index:int = mProperties.indexOf(property);
+            if (index == -1) throw new ArgumentError("The property '" + property + "' is not animated");
+            else return mEndValues[index] as Number;
+        }
         /** Indicates if the tween is finished. */
         public function get isComplete():Boolean 
         { 
-            return mCurrentTime >= mTotalTime && mRepeatCount == 1; 
+			//xp 这块也是，只有可能等于
+            return mCurrentTime == mTotalTime && mRepeatCount == 1; 
         }        
         
         /** The target object that is animated. */
@@ -242,9 +264,11 @@ package starling.animation
         
         /** The time that has passed since the tween was created. */
         public function get currentTime():Number { return mCurrentTime; }
-        
+        /** The current progress between 0 and 1, as calculated by the transition function. */
+        public function get progress():Number { return mProgress; } 
         /** The delay before the tween is started. @default 0 */
         public function get delay():Number { return mDelay; }
+		/**xp延迟这块是先加回原先的延迟，再减去现在的延迟，没问题**/
         public function set delay(value:Number):void 
         { 
             mCurrentTime = mCurrentTime + mDelay - value;
@@ -306,6 +330,22 @@ package starling.animation
          *  this tween is completed. */
         public function get nextTween():Tween { return mNextTween; }
         public function set nextTween(value:Tween):void { mNextTween = value; }
+		//xp注销tween
+		public function dispose():void{
+			mOnStart = mOnUpdate = mOnRepeat = mOnComplete = null;
+			mOnStartArgs = mOnUpdateArgs = mOnRepeatArgs = mOnCompleteArgs = null;
+			mTarget = null;
+			mTransitionFunc = null;
+			mProperties.length = 0;
+			mProperties = null;
+			mStartValues.length = 0;
+			mStartValues = null;
+			mEndValues.length = 0;
+			mEndValues = null;
+			//这个tween是外部创建的，应该外部注销，这里只是把引用删除
+			mNextTween = null;
+			removeEventListeners();
+		}
         
         // tween pooling
         
@@ -315,8 +355,8 @@ package starling.animation
         starling_internal static function fromPool(target:Object, time:Number, 
                                                    transition:Object="linear"):Tween
         {
-            if (sTweenPool.length) return sTweenPool.pop().reset(target, time, transition);
-            else return new Tween(target, time, transition);
+            if (sTweenPool.length) return sTweenPool.pop().reset(target, time, transition, true);
+            else return new Tween(target, time, transition, true);
         }
         
         /** @private */
@@ -327,6 +367,8 @@ package starling.animation
             tween.mOnStartArgs = tween.mOnUpdateArgs = tween.mOnRepeatArgs = tween.mOnCompleteArgs = null;
             tween.mTarget = null;
             tween.mTransitionFunc = null;
+			//xp这里增加清除nextTween
+			tween.mNextTween = null;
             tween.removeEventListeners();
             sTweenPool.push(tween);
         }

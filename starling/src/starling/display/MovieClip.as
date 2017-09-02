@@ -20,7 +20,8 @@ package starling.display
     /** Dispatched whenever the movie has displayed its last frame. */
     [Event(name="complete", type="starling.events.Event")]
     
-    /** A MovieClip is a simple way to display an animation depicted by a list of textures.
+    /** 1、动画最好帧数别是3的倍数例如3,6,9,12，不然没法除开，整个动画的播放事件会比1秒少一点
+	 *  A MovieClip is a simple way to display an animation depicted by a list of textures.
      *  
      *  <p>Pass the frames of the movie in a vector of textures to the constructor. The movie clip 
      *  will have the width and height of the first frame. If you group your frames with the help 
@@ -49,7 +50,6 @@ package starling.display
         private var mStartTimes:Vector.<Number>;
         
         private var mDefaultFrameDuration:Number;
-        private var mTotalTime:Number;
         private var mCurrentTime:Number;
         private var mCurrentFrame:int;
         private var mLoop:Boolean;
@@ -80,7 +80,7 @@ package starling.display
             mPlaying = true;
             mCurrentTime = 0.0;
             mCurrentFrame = 0;
-            mTotalTime = mDefaultFrameDuration * numFrames;
+			//xp复制一下是有好处的，因为这个数组可能还会传给别人，施放的时候，把这个数组清空了就行，不算外部传来的
             mTextures = textures.concat();
             mSounds = new Vector.<Sound>(numFrames);
             mDurations = new Vector.<Number>(numFrames);
@@ -103,6 +103,7 @@ package starling.display
         }
         
         /** Adds a frame at a certain index, optionally with a sound and a custom duration. */
+		/** xp如果duration传小于0，就说明用默认的间隔值**/
         public function addFrameAt(frameID:int, texture:Texture, sound:Sound=null, 
                                    duration:Number=-1):void
         {
@@ -112,10 +113,9 @@ package starling.display
             mTextures.splice(frameID, 0, texture);
             mSounds.splice(frameID, 0, sound);
             mDurations.splice(frameID, 0, duration);
-            mTotalTime += duration;
-            
+            //xp这里必须大于0，因为-1是没有开始时间和持续时间的
             if (frameID > 0 && frameID == numFrames) 
-                mStartTimes[frameID] = mStartTimes[frameID-1] + mDurations[frameID-1];
+                mStartTimes[frameID] = mStartTimes[int(frameID-1)] + mDurations[int(frameID-1)];
             else
                 updateStartTimes();
         }
@@ -126,7 +126,6 @@ package starling.display
             if (frameID < 0 || frameID >= numFrames) throw new ArgumentError("Invalid frame id");
             if (numFrames == 1) throw new IllegalOperationError("Movie clip must not be empty");
             
-            mTotalTime -= getFrameDuration(frameID);
             mTextures.splice(frameID, 1);
             mSounds.splice(frameID, 1);
             mDurations.splice(frameID, 1);
@@ -174,8 +173,6 @@ package starling.display
         public function setFrameDuration(frameID:int, duration:Number):void
         {
             if (frameID < 0 || frameID >= numFrames) throw new ArgumentError("Invalid frame id");
-            mTotalTime -= getFrameDuration(frameID);
-            mTotalTime += duration;
             mDurations[frameID] = duration;
             updateStartTimes();
         }
@@ -211,7 +208,7 @@ package starling.display
             mStartTimes[0] = 0;
             
             for (var i:int=1; i<numFrames; ++i)
-                mStartTimes[i] = mStartTimes[i-1] + mDurations[i-1];
+                mStartTimes[i] = mStartTimes[int(i-1)] + mDurations[int(i-1)];
         }
         
         // IAnimatable
@@ -219,76 +216,110 @@ package starling.display
         /** @inheritDoc */
         public function advanceTime(passedTime:Number):void
         {
+            if (!mPlaying || passedTime <= 0.0) return;
+            
             var finalFrame:int;
             var previousFrame:int = mCurrentFrame;
             var restTime:Number = 0.0;
             var breakAfterFrame:Boolean = false;
-            
-            if (mLoop && mCurrentTime == mTotalTime) 
+            var hasCompleteListener:Boolean = hasEventListener(Event.COMPLETE); 
+            var dispatchCompleteEvent:Boolean = false;
+            var totalTime:Number = this.totalTime;
+			//xp帧是否改变了
+			var currentFrameIsChange:Boolean = false;
+            //xp这里当前时间肯定不会大于总时间，有点误导，删除
+            if (mLoop && mCurrentTime == totalTime)
             { 
                 mCurrentTime = 0.0; 
                 mCurrentFrame = 0; 
+				currentFrameIsChange = true;
             }
-            
-            if (mPlaying && passedTime > 0.0 && mCurrentTime < mTotalTime) 
-            {				
+            //xp有时间差，才可以播放动画（这个条件肯定是成立，其实没什么用）
+            if (mCurrentTime < totalTime)
+            {
                 mCurrentTime += passedTime;
                 finalFrame = mTextures.length - 1;
                 
-                while (mCurrentTime >= mStartTimes[mCurrentFrame] + mDurations[mCurrentFrame])
+                while (mCurrentTime > mStartTimes[mCurrentFrame] + mDurations[mCurrentFrame])
                 {
                     if (mCurrentFrame == finalFrame)
                     {
-                        if (hasEventListener(Event.COMPLETE))
+						
+						//xp是loop并且没有完成事件
+						//xp这是继续的循环啊，是loop，如果没有完成事件的话，继续走while
+						//这是有好处的，不用再调advanceTime了
+                        if (mLoop && !hasCompleteListener)
                         {
-                            if (mCurrentFrame != previousFrame)
-                                texture = mTextures[mCurrentFrame];
-                            
-                            restTime = mCurrentTime - mTotalTime;
-                            mCurrentTime = mTotalTime;
-                            dispatchEventWith(Event.COMPLETE);
-                            breakAfterFrame = true;
-                        }
-                        
-                        if (mLoop)
-                        {
-                            mCurrentTime -= mTotalTime;
+                            mCurrentTime -= totalTime;
                             mCurrentFrame = 0;
+							currentFrameIsChange = true;
                         }
+						//xp这里就是1：不是loop，没有完成事件，2：是loop，有完成事件，3：不是loop，有完成事件
+						//xp：那就先发个事件再走，1，3：都不用走while了，直接完成就完事儿了
                         else
                         {
-                            mCurrentTime = mTotalTime;
                             breakAfterFrame = true;
+                            restTime = mCurrentTime - totalTime;
+                            dispatchCompleteEvent = hasCompleteListener;
+                            mCurrentFrame = finalFrame;
+							currentFrameIsChange = true;
+                            mCurrentTime = totalTime;
                         }
                     }
+					//xp这里可能会到最后一帧，并且时间跟最后一帧的最后时间恰巧相等，所以会下面有判断最后一帧并且时间相等
                     else
                     {
                         mCurrentFrame++;
+						currentFrameIsChange = true;
                     }
-                    
-                    var sound:Sound = mSounds[mCurrentFrame];
-                    if (sound) sound.play();
+                    //xp这里可能播放两次音效，到最后一帧开始播放，结束时也可能播放（？）
+                    //var sound:Sound = mSounds[mCurrentFrame];
+                    //if (sound) sound.play();
                     if (breakAfterFrame) break;
                 }
+                
+                // special case when we reach *exactly* the total time.
+				//xp有用，while循环是大于，才走，等于的话，直接发事件就可以了，不用做切换
+				//因为这是最后一帧了，不能再往下切换了
+                if (mCurrentFrame == finalFrame && mCurrentTime == totalTime)
+                    dispatchCompleteEvent = hasCompleteListener;
             }
             
-            if (mCurrentFrame != previousFrame)
+            if (mCurrentFrame != previousFrame){
                 texture = mTextures[mCurrentFrame];
-            
-            if (restTime)
+			}
+            //xp把音效放在这里比较好,如果帧有所变化，就播放音乐
+			if(currentFrameIsChange){
+				var sound:Sound = mSounds[mCurrentFrame];
+				if (sound) sound.play();
+			}
+            if (dispatchCompleteEvent)
+                dispatchEventWith(Event.COMPLETE);
+			
+			//如果是loop并且有剩余没用的时间，才有意义走动画
+			//如果事件回调，改变了loop的值，也就没有必要再走这里了
+            if (mLoop && restTime > 0.0)
                 advanceTime(restTime);
         }
         
         /** Indicates if a (non-looping) movie has come to its end. */
         public function get isComplete():Boolean 
         {
-            return !mLoop && mCurrentTime >= mTotalTime;
+			//这里的大于条件，根本就不会存在，改成==
+            return !mLoop && mCurrentTime == totalTime;
         }
         
         // properties  
         
         /** The total duration of the clip in seconds. */
-        public function get totalTime():Number { return mTotalTime; }
+        public function get totalTime():Number 
+        {
+            var numFrames:int = mTextures.length;
+            return mStartTimes[int(numFrames-1)] + mDurations[int(numFrames-1)];
+        }
+        
+        /** The time that has passed since the clip was started (each loop starts at zero). */
+        public function get currentTime():Number { return mCurrentTime; }
         
         /** The total number of frames. */
         public function get numFrames():int { return mTextures.length; }
@@ -327,7 +358,6 @@ package starling.display
             for (var i:int=0; i<numFrames; ++i) 
             {
                 var duration:Number = mDurations[i] * acceleration;
-                mTotalTime = mTotalTime - mDurations[i] + duration;
                 mDurations[i] = duration;
             }
             
@@ -339,9 +369,21 @@ package starling.display
         public function get isPlaying():Boolean 
         {
             if (mPlaying)
-                return mLoop || mCurrentTime < mTotalTime;
+                return mLoop || mCurrentTime < totalTime;
             else
                 return false;
         }
+		//xp资源释放
+		override public function dispose():void{
+			mTextures.length = 0;
+			mSounds.length = 0;
+			mDurations.length = 0;
+			mStartTimes.length = 0;
+			mTextures = null;
+			mSounds = null;
+			mDurations = null;
+			mStartTimes = null;
+			super.dispose();
+		}
     }
 }

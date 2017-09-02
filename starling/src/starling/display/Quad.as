@@ -17,7 +17,8 @@ package starling.display
     import starling.core.RenderSupport;
     import starling.utils.VertexData;
     
-    /** A Quad represents a rectangle with a uniform color or a color gradient.
+    /** xp已看完
+	 *  A Quad represents a rectangle with a uniform color or a color gradient.
      *  
      *  <p>You can set one color per vertex. The colors will smoothly fade into each other over the area
      *  of the quad. To display a simple linear color gradient, assign one color to vertices 0 and 1 and 
@@ -72,12 +73,13 @@ package starling.display
         public override function getBounds(targetSpace:DisplayObject, resultRect:Rectangle=null):Rectangle
         {
             if (resultRect == null) resultRect = new Rectangle();
-            
+            //如果是自己，则取第三个点，就可以了
             if (targetSpace == this) // optimization
             {
                 mVertexData.getPosition(3, sHelperPoint);
                 resultRect.setTo(0.0, 0.0, sHelperPoint.x, sHelperPoint.y);
             }
+			//如果目标parent，并且旋转角度为0
             else if (targetSpace == parent && rotation == 0.0) // optimization
             {
                 var scaleX:Number = this.scaleX;
@@ -85,6 +87,7 @@ package starling.display
                 mVertexData.getPosition(3, sHelperPoint);
                 resultRect.setTo(x - pivotX * scaleX,      y - pivotY * scaleY,
                                  sHelperPoint.x * scaleX, sHelperPoint.y * scaleY);
+				//如果缩放比小于0，则宽度高度乘以-1，并且x，y减去宽度，高度。宽度，高度是负，x,y想左上角移动
                 if (scaleX < 0) { resultRect.width  *= -1; resultRect.x -= resultRect.width;  }
                 if (scaleY < 0) { resultRect.height *= -1; resultRect.y -= resultRect.height; }
             }
@@ -109,8 +112,9 @@ package starling.display
             mVertexData.setColor(vertexID, color);
             onVertexDataChanged();
             
-            if (color != 0xffffff) mTinted = true;
-            else mTinted = mVertexData.tinted;
+			//每次都要考虑displayobject的透明度
+            if (color != 0xffffff || this.alpha != 1.0) mTinted = true;
+            //else mTinted = mVertexData.tinted;
         }
         
         /** Returns the alpha value of a vertex at a certain index. */
@@ -125,8 +129,9 @@ package starling.display
             mVertexData.setAlpha(vertexID, alpha);
             onVertexDataChanged();
             
-            if (alpha != 1.0) mTinted = true;
-            else mTinted = mVertexData.tinted;
+			//每次都要考虑displayobject的透明度
+            if (alpha != 1.0 || this.alpha != 1.0) mTinted = true;
+            //else mTinted = mVertexData.tinted;
         }
         
         /** Returns the color of the quad, or of vertex 0 if vertices have different colors. */
@@ -141,23 +146,28 @@ package starling.display
             for (var i:int=0; i<4; ++i)
                 setVertexColor(i, value);
             
-            if (value != 0xffffff || alpha != 1.0) mTinted = true;
-            else mTinted = mVertexData.tinted;
+			//每次都要考虑displayobject的透明度
+            if (value != 0xffffff || this.alpha != 1.0) mTinted = true;
+            //else mTinted = mVertexData.tinted;
         }
         
         /** @inheritDoc **/
+		//如果是整体透明度的话，就不更新所有点的透明，应该是最后一块计算
         public override function set alpha(value:Number):void
         {
             super.alpha = value;
-            
-            if (value < 1.0) mTinted = true;
-            else mTinted = mVertexData.tinted;
+            //每次都要考虑displayobject的透明度
+            if (this.alpha != 1.0) mTinted = true;
+            //else mTinted = mVertexData.tinted;
         }
         
         /** Copies the raw vertex data to a VertexData instance. */
+		//把这个对象的顶点都copy到目标对象里
         public function copyVertexDataTo(targetData:VertexData, targetVertexID:int=0):void
         {
+			//copy之后的mTinted还没有写入呢（？），可能copy的数据，是mTinted的
             mVertexData.copyTo(targetData, targetVertexID);
+			//这之后要处理，targetData的所对应的对象的mTinted问题
         }
         
         /** @inheritDoc */
@@ -168,5 +178,10 @@ package starling.display
         
         /** Returns true if the quad (or any of its vertices) is non-white or non-opaque. */
         public function get tinted():Boolean { return mTinted; }
+		public override function dispose():void{
+			mVertexData.dispose();
+			mVertexData = null;
+			super.dispose();
+		}
     }
 }

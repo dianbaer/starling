@@ -14,6 +14,7 @@ package starling.textures
     import flash.utils.ByteArray;
 
     /** A parser for the ATF data format. */
+	
     internal class AtfData
     {
         private var mFormat:String;
@@ -23,6 +24,7 @@ package starling.textures
         private var mData:ByteArray;
         
         /** Create a new instance by parsing the given byte array. */
+		//xp已看完
         public function AtfData(data:ByteArray)
         {
             var signature:String = String.fromCharCode(data[0], data[1], data[2]);
@@ -45,7 +47,11 @@ package starling.textures
             mNumTextures = data[9];
             mData = data;
         }
-        
+		//注销(注销的时候应该是，把这个清理了，因为这个其实是加载资源之后的保存文件)
+        public function dispose():void{
+			mData.clear();
+			mData = null;
+		}
         public function get format():String { return mFormat; }
         public function get width():int { return mWidth; }
         public function get height():int { return mHeight; }

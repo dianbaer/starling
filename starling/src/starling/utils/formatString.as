@@ -11,7 +11,7 @@
 package starling.utils
 {
     // TODO: add number formatting options
-    
+    //xp已看完
     /** Formats a String in .Net-style, with curly braces ("{0}"). Does not support any 
      *  number formatting options yet. */
     public function formatString(format:String, ...args):String

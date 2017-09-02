@@ -74,9 +74,13 @@ package starling.textures
         }
         
         /** Disposes the atlas texture. */
+		//纹理图集，注销是不是得需要保证，依赖他的资源全部注销
         public function dispose():void
         {
             mAtlasTexture.dispose();
+			mAtlasTexture = null;
+			mTextureRegions = null;
+			mTextureFrames = null;
         }
         
         /** This function is called by the constructor and will parse an XML in Starling's 

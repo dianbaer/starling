@@ -10,7 +10,8 @@
 
 package starling.animation
 {
-    /**  The IAnimatable interface describes objects that are animated depending on the passed time. 
+    /**  xp已看完
+	 *   The IAnimatable interface describes objects that are animated depending on the passed time. 
      *   Any object that implements this interface can be added to a juggler.
      *   
      *   <p>When an object should no longer be animated, it has to be removed from the juggler. 

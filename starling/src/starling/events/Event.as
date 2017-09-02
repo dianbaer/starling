@@ -17,7 +17,9 @@ package starling.events
     
     use namespace starling_internal;
 
-    /** Event objects are passed as parameters to event listeners when an event occurs.  
+    /** xp已看完	
+	 * 
+	 * 	Event objects are passed as parameters to event listeners when an event occurs.  
      *  This is Starling's version of the Flash Event class. 
      *
      *  <p>EventDispatchers create instances of this class and send them to registered listeners. 
@@ -86,6 +88,7 @@ package starling.events
         private var mData:Object;
         
         /** Creates an event object that can be passed to listeners. */
+		/**xp 创建事件类，传入类型，是否冒泡，和数据（无回调）**/
         public function Event(type:String, bubbles:Boolean=false, data:Object=null)
         {
             mType = type;
@@ -94,18 +97,21 @@ package starling.events
         }
         
         /** Prevents listeners at the next bubble stage from receiving the event. */
+		/**xp 停止向上冒泡，这轮的事件广播不停（无回调）**/
         public function stopPropagation():void
         {
             mStopsPropagation = true;            
         }
         
         /** Prevents any other listeners from receiving the event. */
+		/**xp 立即停止事件广播（无回调）**/
         public function stopImmediatePropagation():void
         {
             mStopsPropagation = mStopsImmediatePropagation = true;
         }
         
         /** Returns a description of the event, containing type and bubble information. */
+		/**xp 转换成字符串（无回调）**/
         public function toString():String
         {
             return formatString("[{0} type=\"{1}\" bubbles={2}]", 
@@ -143,24 +149,30 @@ package starling.events
         
         /** @private */
         internal function get stopsImmediatePropagation():Boolean { return mStopsImmediatePropagation; }
-        
+        //xp清理事件类
+        public function dispose():void{
+			mData = mTarget = mCurrentTarget = null;
+		}
         // event pooling
         
         /** @private */
+		/** xp取事件池里面的事件，并且对事件进行重置（无回调）**/
         starling_internal static function fromPool(type:String, bubbles:Boolean=false, data:Object=null):Event
         {
             if (sEventPool.length) return sEventPool.pop().reset(type, bubbles, data);
             else return new Event(type, bubbles, data);
         }
-        
+		
         /** @private */
+		/** xp只清理两个目标和带来的数据，是为了可以释放资源，其他的不清理，等用的时候在重置，增加效率（无回调）**/
         starling_internal static function toPool(event:Event):void
         {
             event.mData = event.mTarget = event.mCurrentTarget = null;
-            sEventPool.push(event);
+            sEventPool[sEventPool.length] = event; // avoiding 'push'
         }
         
         /** @private */
+		/**xp 重置事件（无回调）**/
         starling_internal function reset(type:String, bubbles:Boolean=false, data:Object=null):Event
         {
             mType = type;

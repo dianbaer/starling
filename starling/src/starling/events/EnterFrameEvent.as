@@ -10,7 +10,8 @@
 
 package starling.events
 {
-    /** An EnterFrameEvent is triggered once per frame and is dispatched to all objects in the
+    /** xp已看完
+	 *  An EnterFrameEvent is triggered once per frame and is dispatched to all objects in the
      *  display tree.
      *
      *  It contains information about the time that has passed since the last frame. That way, you 
