@@ -1,6 +1,6 @@
 # starling
 
-starling 基于ActionScrpit3 GPU 2D渲染引擎，此项目是starling1.3版本的bug修复并增加部分注释
+starling 基于ActionScrpit3 GPU 2D渲染引擎，对starling1.3版本BUG修复与理解注释
 
 原版本：
 
