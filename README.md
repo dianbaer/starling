@@ -2,6 +2,10 @@
 
 starling 基于ActionScrpit3 GPU 2D渲染引擎，此项目是starling1.3版本的bug修复并增加部分注释
 
+原版本：
+
+https://github.com/Gamua/Starling-Framework/releases/tag/v1.3
+
 修复文件有：
 
 	com/adobe/utils/AGALMiniAssembler.as
