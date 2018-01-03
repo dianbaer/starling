@@ -1,5 +1,6 @@
 # starling
 
+
 starling 基于ActionScrpit3 GPU 2D渲染引擎，对starling1.3版本BUG修复与理解注释
 
 原版本：
